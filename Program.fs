@@ -2,19 +2,25 @@
 
 open System
 open PolygonHistorical
+open Models
 
 [<EntryPoint>]
-let main argv =
+let main _ =
+    let httpClient = new System.Net.Http.HttpClient()
     let totalDays = int((DateTime.Now.AddDays -1.0 - DateTime.Now.AddYears -3).TotalDays)
 
     for i = 1 to totalDays do
-        let mutable resultQuotes = GetHistoricalAsync("AAPL", DateTime.Now.AddDays(float(-i)), 0L) |> Async.RunSynchronously
+        let mutable totalDayList = (GetHistoricalAsync("AAPL", DateTime.Now.AddDays(float(-i)), 0L, option.Some httpClient) |> Async.RunSynchronously).Results
+        let mutable paginatedHistorical = GetHistoricalAsync("AAPL", DateTime.Now.AddDays(float(-i)), 0L, option.Some httpClient) |> Async.RunSynchronously
+        
+        while paginatedHistorical.Results.Length > 10 do
+            let lastTime = List.last(totalDayList).Time
 
-        while resultQuotes.Results.Length <> 0 do
-            let lastTime = List.last(resultQuotes.Results).Time 
+            paginatedHistorical <- GetHistoricalAsync("AAPL", DateTime.Now.AddDays(float(-i)), lastTime, option.Some httpClient) |> Async.RunSynchronously
+            
+            totalDayList <- List.append totalDayList paginatedHistorical.Results
+            Console.WriteLine("Found {0}. Total: {1}", new DateTime(lastTime / 100L + 621355968000000000L), totalDayList.Length)
 
-            resultQuotes <- GetHistoricalAsync("AAPL", DateTime.Now.AddDays(float(-i)), lastTime) |> Async.RunSynchronously
-            Console.WriteLine("Found {0}", new DateTime(lastTime / 100L + 621355968000000000L))
-
-        if resultQuotes.Results.Length = 0 then printfn "Yes"
+            if totalDayList.Length = 0 then printfn "Yes"
+        |> ignore
     0 // return an integer exit code

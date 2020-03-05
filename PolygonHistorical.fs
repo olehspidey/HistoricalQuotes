@@ -14,9 +14,9 @@ let FormatDateToPolygon(date: DateTime) =
         (if date.Month > 10 then date.Month.ToString() else "0" + date.Month.ToString()),
         (if date.Day > 10 then date.Day.ToString() else "0" + date.Day.ToString()))
 
-let GetHistoricalAsync(symbol: string, date: DateTime, offset: int64) =
+let GetHistoricalAsync(symbol: string, date: DateTime, offset: int64, httpClient: HttpClient option) =
     async {
-        let httClient = new HttpClient()
+        let http = if httpClient.IsSome then httpClient.Value else new HttpClient()
         let fullUrl = 
             String.Format("{0}/{1}/{2}/{3}?apiKey={4}{5}&limit=10000",
                 BaseUrl,
@@ -25,14 +25,16 @@ let GetHistoricalAsync(symbol: string, date: DateTime, offset: int64) =
                 FormatDateToPolygon date,
                 ApiKey,
                 (if offset = int64(0) then "" else "&timestamp=" + offset.ToString()))
-        let! gotResult = httClient.GetAsync fullUrl |> Async.AwaitTask
+        let! gotResult = http.GetAsync fullUrl |> Async.AwaitTask
         
-        if not gotResult.IsSuccessStatusCode 
-            then printfn "Invalid response. Status code: %s" (gotResult.StatusCode.ToString())
-
-        let! jsonResult = gotResult.Content.ReadAsStringAsync() |> Async.AwaitTask
-        let qoutes = JsonConvert.DeserializeObject<HistoricalQuoteResponse> jsonResult
-        
-        //return System.Threading.Tasks.Task.FromResult(qoutes)
-        return qoutes
+        return (if not gotResult.IsSuccessStatusCode 
+            then 
+                {HistoricalQuoteResponse.Results = List.empty<HistoricalQuote>}
+                |> async.Return
+                |> Async.RunSynchronously
+            else 
+                gotResult.Content.ReadAsStringAsync() 
+                |> Async.AwaitTask 
+                |> Async.RunSynchronously 
+                |> JsonConvert.DeserializeObject<HistoricalQuoteResponse>)
     }
